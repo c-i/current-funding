@@ -45,20 +45,25 @@ async def aio_request(url, headers, loop, limit_sem, delay=0.1, post=False, payl
 # current rate is for the hourly rate
 class Aevo:
     def __init__(self):
+        self.name = "aevo"
         self.markets = self.markets()
-        self.assets = []
+        aevo_assets = []
 
         for market in self.markets:
             if market["is_active"]:
                 if "pre_launch" in market:
                     if market["pre_launch"]:
                         continue
-
-                self.assets.append(market["instrument_name"])
+                
+                aevo_assets.append(market["instrument_name"])
 
         loop = asyncio.new_event_loop()
-        hourly = np.array(loop.run_until_complete(self.current_funding(loop))) * 100
+        hourly = np.array(loop.run_until_complete(self.current_funding(aevo_assets, loop))) * 100
         loop.close()
+
+        self.assets = []
+        for asset in aevo_assets:
+            self.assets.append(asset.split("-")[0])
 
         daily = hourly * 24
         annual = daily * 365
@@ -75,7 +80,7 @@ class Aevo:
         return json.loads(response.text)
 
 
-    async def current_funding(self, loop):
+    async def current_funding(self, assets, loop):
         headers = {"accept": "application/json"}
 
         limit_sem = asyncio.Semaphore(20)
@@ -83,7 +88,7 @@ class Aevo:
 
         current_funding = []
 
-        responses = await asyncio.gather(*[aio_request(f"{AEVO_ENDPOINT}/funding?instrument_name={asset}", headers, loop, limit_sem, delay=delay) for asset in self.assets])
+        responses = await asyncio.gather(*[aio_request(f"{AEVO_ENDPOINT}/funding?instrument_name={asset}", headers, loop, limit_sem, delay=delay) for asset in assets])
         
         for response in responses:
             current_funding.append(float(json.loads(response)["funding_rate"]))
@@ -97,8 +102,12 @@ class Aevo:
 # current rate is for the hourly rate
 class Dydxv3:
     def __init__(self):
+        self.name = "dydx_v3"
         self.markets = self.markets()["markets"]
-        self.assets = [market for market in self.markets.keys()]
+        dydx_assets = [market for market in self.markets.keys()]
+        self.assets = []
+        for asset in dydx_assets:
+            self.assets.append(asset.split("-")[0])
 
         rates = []
         for market in self.markets:
@@ -126,6 +135,7 @@ class Dydxv3:
 # current rate is for the hourly rate
 class Hyperliquid:
     def __init__(self):
+        self.name = "hyperliquid"
         self.markets = self.markets()
         self.assets = [market["name"] for market in self.markets[0]["universe"]]
         funding_dict = {}
@@ -150,8 +160,22 @@ class Hyperliquid:
 
         return json.loads(response.text)
 
-        
 
+
+
+def differenced_rates(*exchanges):
+    differences = []
+    for i, exchange in enumerate(exchanges):
+        rate_s = exchange.current_funding["1hr%"]
+        j = i + 1
+        while j < len(exchanges):
+            next_rate_s = exchanges[j].current_funding["1hr%"]
+            difference_s = rate_s.sub(next_rate_s, axis="index")
+            difference_s.name = f"{exchange.name}-{exchanges[j].name}"
+            j += 1
+
+    return differences
+        
 
 
 
@@ -159,6 +183,11 @@ def main():
     aevo = Aevo()
     dydx = Dydxv3()
     hyper = Hyperliquid()
+    print(len(aevo.assets))
+    print(len(dydx.assets))
+    print(len(hyper.assets))
+
+    differenced_rates(aevo, dydx, hyper)
 
     n = 10
 
@@ -172,9 +201,7 @@ def main():
     print("\ndydx:\n", dydx.current_funding.tail(n))
     print("\nhyperliquid:\n", hyper.current_funding.tail(n))
     
-    # TODO: turn current_funding into dict with column labels being interval for funding, eg col1: 8hour, col2: daily, col3: annual
-
-
+    
 
 
 if __name__ == "__main__":
