@@ -170,12 +170,32 @@ def differenced_rates(*exchanges):
         j = i + 1
         while j < len(exchanges):
             next_rate_s = exchanges[j].current_funding["1hr%"]
-            difference_s = rate_s.sub(next_rate_s, axis="index")
+            difference_s = rate_s.sub(next_rate_s, axis="index").dropna()
             difference_s.name = f"{exchange.name}-{exchanges[j].name}"
+            differences.append(difference_s)
             j += 1
 
     return differences
-        
+
+
+
+
+def best_differences(differences):
+    indices_set = set()
+    for series in differences:
+        indices_set.update(set(series.index))
+
+    best_diff_df = pd.DataFrame(0.0, index=list(indices_set), columns=["difference", "exchange"])
+    best_diff_df["exchange"] = ""
+
+    for diff_s in differences:
+        for index in diff_s.index:
+            if abs(diff_s.loc[index]) > abs(best_diff_df.loc[index, "difference"]):
+                best_diff_df.loc[index, "difference"] = diff_s.loc[index]
+                best_diff_df.loc[index, "exchange"] = diff_s.name
+
+    return best_diff_df.sort_values(by="difference", ascending=False)
+            
 
 
 
@@ -187,7 +207,10 @@ def main():
     print(len(dydx.assets))
     print(len(hyper.assets))
 
-    differenced_rates(aevo, dydx, hyper)
+    differences = differenced_rates(aevo, dydx, hyper)
+    print(differences, "\n\n\n")
+    best_diff_df = best_differences(differences)
+    print(best_diff_df)
 
     n = 10
 
