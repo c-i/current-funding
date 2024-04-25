@@ -10,7 +10,8 @@ import numpy as np
 
 
 AEVO_ENDPOINT = "https://api.aevo.xyz"
-DYDX_ENDPOINT = "https://api.dydx.exchange"
+DYDX_V3_ENDPOINT = "https://api.dydx.exchange/v3"
+DYDX_V4_ENDPOINT = "https://indexer.dydx.trade/v4"
 HYPER_ENDPOINT = "https://api.hyperliquid.xyz"
 
 LOGGER_FORMAT = "%(asctime)s %(message)s"
@@ -120,15 +121,42 @@ class Dydxv3:
     
     
     def markets(self):
-        url = f"{DYDX_ENDPOINT}/v3/markets"
+        url = f"{DYDX_V3_ENDPOINT}/markets"
         headers = {"accept": "application/json"}
 
         response = requests.get(url, headers=headers)
 
         return json.loads(response.text)
 
-    
 
+
+    
+class Dydxv4:
+    def __init__(self):
+        self.name = "dydx_v4"
+        self.markets = self.markets()["markets"]
+        v4_assets = [market for market in self.markets.keys()]
+        self.assets = []
+        for asset in v4_assets:
+            self.assets.append(asset.split("-")[0])
+
+        rates = []
+        for market in self.markets:
+            rate = float(self.markets[market]["nextFundingRate"])
+            rates.append([rate, rate * 2400, rate * 2400 * 365])
+
+        rates_array = np.array(rates)
+
+        self.current_funding = pd.DataFrame(data=rates_array, index=self.assets, columns=["1hr%", "24hr%", "1yr%"]).sort_values(by=["1hr%"], ascending=False)
+
+
+    def markets(self):
+        url = f"{DYDX_V4_ENDPOINT}/perpetualMarkets"
+        headers = {"accept": "application/json"}
+
+        response = requests.get(url, headers=headers)
+
+        return json.loads(response.text)
 
 
 # hourly funding payments
@@ -185,16 +213,21 @@ def best_differences(differences):
     for series in differences:
         indices_set.update(set(series.index))
 
-    best_diff_df = pd.DataFrame(0.0, index=list(indices_set), columns=["difference", "exchange"])
+    best_diff_df = pd.DataFrame(0.0, index=list(indices_set), columns=["1hr%_diff", "24hr%_diff", "1yr%_diff", "exchange"])
     best_diff_df["exchange"] = ""
 
     for diff_s in differences:
         for index in diff_s.index:
-            if abs(diff_s.loc[index]) > abs(best_diff_df.loc[index, "difference"]):
-                best_diff_df.loc[index, "difference"] = diff_s.loc[index]
+            if abs(diff_s.loc[index]) > abs(best_diff_df.loc[index, "1hr%_diff"]):
+                hourly = diff_s.loc[index]
+                daily = hourly * 24
+                annual = daily * 365
+                best_diff_df.loc[index, "1hr%_diff"] = hourly
+                best_diff_df.loc[index, "24hr%_diff"] = daily
+                best_diff_df.loc[index, "1yr%_diff"] = annual
                 best_diff_df.loc[index, "exchange"] = diff_s.name
 
-    return best_diff_df.sort_values(by="difference", ascending=False)
+    return best_diff_df.sort_values(by="1hr%_diff", ascending=False)
             
 
 
@@ -202,12 +235,15 @@ def best_differences(differences):
 def main():
     aevo = Aevo()
     dydx = Dydxv3()
+    dydx_v4 = Dydxv4()
     hyper = Hyperliquid()
+
     print(len(aevo.assets))
     print(len(dydx.assets))
+    print(len(dydx_v4.assets))
     print(len(hyper.assets))
 
-    differences = differenced_rates(aevo, dydx, hyper)
+    differences = differenced_rates(aevo, dydx, dydx_v4, hyper)
     print(differences, "\n\n\n")
     best_diff_df = best_differences(differences)
     print(best_diff_df)
@@ -216,12 +252,14 @@ def main():
 
     print(f"\n\n\ntop {n} rates:")
     print("\naevo:\n", aevo.current_funding.head(n))
-    print("\ndydx:\n", dydx.current_funding.head(n))
+    print("\ndydx_v3:\n", dydx.current_funding.head(n))
+    print("\ndydx_v4:\n", dydx_v4.current_funding.head(n))
     print("\nhyperliquid:\n", hyper.current_funding.head(n))
 
     print(f"\n\n\nlowest {n} rates:")
     print("\naevo:\n", aevo.current_funding.tail(n))
-    print("\ndydx:\n", dydx.current_funding.tail(n))
+    print("\ndydx_v3:\n", dydx.current_funding.tail(n))
+    print("\ndydx_v4:\n", dydx_v4.current_funding.tail(n))
     print("\nhyperliquid:\n", hyper.current_funding.tail(n))
     
     
