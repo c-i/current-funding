@@ -235,15 +235,16 @@ def best_differences(differences):
 def main():
     aevo = Aevo()
     dydx = Dydxv3()
-    dydx_v4 = Dydxv4()
+    # dydx_v4 = Dydxv4()
     hyper = Hyperliquid()
 
     print(len(aevo.assets))
     print(len(dydx.assets))
-    print(len(dydx_v4.assets))
+    # print(len(dydx_v4.assets))
     print(len(hyper.assets))
 
-    differences = differenced_rates(aevo, dydx, dydx_v4, hyper)
+    # differences = differenced_rates(aevo, dydx, dydx_v4, hyper)
+    differences = differenced_rates(aevo, dydx, hyper)
     print(differences, "\n\n\n")
     best_diff_df = best_differences(differences)
     print(best_diff_df)
@@ -253,13 +254,13 @@ def main():
     print(f"\n\n\ntop {n} rates:")
     print("\naevo:\n", aevo.current_funding.head(n))
     print("\ndydx_v3:\n", dydx.current_funding.head(n))
-    print("\ndydx_v4:\n", dydx_v4.current_funding.head(n))
+    # print("\ndydx_v4:\n", dydx_v4.current_funding.head(n))
     print("\nhyperliquid:\n", hyper.current_funding.head(n))
 
     print(f"\n\n\nlowest {n} rates:")
     print("\naevo:\n", aevo.current_funding.tail(n))
     print("\ndydx_v3:\n", dydx.current_funding.tail(n))
-    print("\ndydx_v4:\n", dydx_v4.current_funding.tail(n))
+    # print("\ndydx_v4:\n", dydx_v4.current_funding.tail(n))
     print("\nhyperliquid:\n", hyper.current_funding.tail(n))
     
     
